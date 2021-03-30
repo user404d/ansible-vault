@@ -246,15 +246,19 @@
   meta: flush_handlers
 
 - name: Compute TLS friendly vault_addr
+  vars:
+    - protocol: "{{ vault_tls_disable | ternary('http', 'https') }}"
+    - default_hostname: "{{ (vault_address == '0.0.0.0') | ternary('127.0.0.1', vault_address) }}"
+    - hostname: "{{ vault_hostname | default(default_hostname, true) }}"
   set_fact:
-    vault_addr: "{{ (vault_address == '0.0.0.0') | ternary('127.0.0.1', vault_address) }}"
+    vault_addr: "{{ protocol }}://{{ hostname }}:{{ vault_port }}"
 
 - name: Insert http(s) export in dotfile
   become: true
   lineinfile:
     path: "{{ vault_home }}/.bashrc"
     regexp: "^export VAULT_ADDR="
-    line: "export VAULT_ADDR='{{ vault_tls_disable | ternary('http', 'https') }}://{{ vault_addr }}:{{ vault_port }}'"
+    line: "export VAULT_ADDR='{{ vault_addr }}'"
     owner: "{{ vault_user }}"
     group: "{{ vault_group }}"
     create: true
@@ -279,11 +283,9 @@
 # This should succeed regardless of seal state
 - name: Vault API reachable?
   # Attempt to help with long lines > 160 issues
-  vars:
-    vault_addr_protocol: "{{ vault_tls_disable | ternary('http', 'https') }}"
   uri:
     validate_certs: "{{ validate_certs_during_api_reachable_check | bool }}"
-    url: "{{ vault_addr_protocol }}://{{ vault_hostname | default(vault_addr, true) }}:{{ vault_port }}/v1/sys/health"
+    url: "{{ vault_addr }}/v1/sys/health"
     method: GET
     # 200 if initialized, unsealed, and active
     # 429 if unsealed and standby
